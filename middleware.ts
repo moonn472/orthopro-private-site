@@ -1,33 +1,49 @@
-
 import { NextRequest, NextResponse } from "next/server";
 
-// Basic Auth for private preview (change credentials via env on Vercel)
-const BASIC_USER = process.env.BASIC_AUTH_USER || "private";
-const BASIC_PASS = process.env.BASIC_AUTH_PASS || "orthopro";
+const BASIC_USER = process.env.BASIC_AUTH_USER || "mounir";
+const BASIC_PASS = process.env.BASIC_AUTH_PASS || "futura";
 const realm = "Private Preview";
 
-export function middleware(req: NextRequest) {
-  // Allow robots.txt and favicon to be served but still noindex them
-  const {"pathname": path} = req.nextUrl;
-  if (path.startsWith("/api")) return NextResponse.next();
+// Decode Base64 using Web API (Edge runtime)
+function decodeBasic(b64: string): string {
+  try {
+    // atob est dispo sur l’Edge runtime
+    return atob(b64);
+  } catch {
+    return "";
+  }
+}
 
-  const auth = req.headers.get("authorization");
-  if (auth) {
-    const [scheme, encoded] = auth.split(" ");
-    if (scheme.toLowerCase() === "basic") {
-      const decoded = Buffer.from(encoded, "base64").toString();
-      const [user, pass] = decoded.split(":");
-      if (user === BASIC_USER && pass === BASIC_PASS) {
-        return NextResponse.next();
-      }
+export function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // Laisse passer les assets et l’API
+  if (
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico" ||
+    pathname.startsWith("/api")
+  ) {
+    return NextResponse.next();
+  }
+
+  const auth = req.headers.get("authorization") || "";
+  const [scheme, encoded] = auth.split(" ");
+
+  if (scheme?.toLowerCase() === "basic" && encoded) {
+    const decoded = decodeBasic(encoded);
+    const i = decoded.indexOf(":");
+    const u = i >= 0 ? decoded.slice(0, i) : "";
+    const p = i >= 0 ? decoded.slice(i + 1) : "";
+    if (u === BASIC_USER && p === BASIC_PASS) {
+      return NextResponse.next();
     }
   }
 
   return new NextResponse("Authentication required.", {
     status: 401,
     headers: {
-      "WWW-Authenticate": `Basic realm="${realm}", charset="UTF-8"`
-    }
+      "WWW-Authenticate": `Basic realm="${realm}", charset="UTF-8"`,
+    },
   });
 }
 
